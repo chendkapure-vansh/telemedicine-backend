@@ -1,6 +1,6 @@
-# Amrutam Telemedicine Backend
+# Telemedicine Backend System
 
-Production-grade, highly scalable, and secure backend system for Amrutam's healthcare platform, designed to support 100,000 daily consultations with zero double-booking, strict write idempotency, field-level PHI encryption, RBAC, and observability.
+Production-grade, highly scalable, and secure backend system for modern digital healthcare platforms, designed to support 100,000 daily consultations with zero double-booking, strict write idempotency, field-level PHI encryption, RBAC, and observability.
 
 ---
 
