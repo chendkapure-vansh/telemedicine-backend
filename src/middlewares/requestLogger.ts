@@ -1,8 +1,18 @@
 import { Request, Response, NextFunction } from 'express';
+import crypto from 'crypto';
 import { logger } from '../config/logger';
 
+/**
+ * Request logger middleware providing correlated structured logging with trace ID propagation.
+ */
 export function requestLogger(req: Request, res: Response, next: NextFunction): void {
   const start = Date.now();
+  const traceId =
+    (req.headers['x-request-id'] as string) ||
+    (req.headers['traceparent'] as string) ||
+    crypto.randomUUID();
+
+  res.setHeader('X-Request-Id', traceId);
 
   res.on('finish', () => {
     const duration = Date.now() - start;
@@ -10,6 +20,7 @@ export function requestLogger(req: Request, res: Response, next: NextFunction): 
     const { statusCode } = res;
 
     const logData = {
+      traceId,
       method,
       url: originalUrl,
       status: statusCode,
@@ -28,3 +39,4 @@ export function requestLogger(req: Request, res: Response, next: NextFunction): 
 
   next();
 }
+

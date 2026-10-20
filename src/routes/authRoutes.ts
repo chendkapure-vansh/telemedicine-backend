@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { authController } from '../controllers/authController';
 import { authenticate } from '../middlewares/auth';
+import { authRateLimiter } from '../middlewares/rateLimiter';
 
 export const authRouter = Router();
 
@@ -9,14 +10,15 @@ export const authRouter = Router();
  * @desc    Register a new user account (PATIENT or DOCTOR)
  * @access  Public
  */
-authRouter.post('/register', authController.register);
+authRouter.post('/register', authRateLimiter, authController.register);
 
 /**
  * @route   POST /api/v1/auth/login
  * @desc    Authenticate credentials, verify MFA if enabled, issue JWT pair
  * @access  Public
  */
-authRouter.post('/login', authController.login);
+authRouter.post('/login', authRateLimiter, authController.login);
+
 
 /**
  * @route   POST /api/v1/auth/refresh
