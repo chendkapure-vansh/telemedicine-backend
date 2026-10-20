@@ -1,0 +1,78 @@
+name: CI Pipeline
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  validate-and-test:
+    name: Lint, Test, Security Audit & Build
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: telemedicine_db
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      PORT: 3000
+      NODE_ENV: test
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/telemedicine_db
+      REDIS_URL: redis://localhost:6379
+      JWT_ACCESS_SECRET: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+      JWT_REFRESH_SECRET: fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210
+      ACTIVE_PHI_KEY_VERSION: v1
+      PHI_ENCRYPTION_KEY_V1: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20.x
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install Clean Dependencies
+        run: npm ci
+
+      - name: Run ESLint Code Analysis
+        run: npm run lint
+
+      - name: Run TypeScript Strict Type Checking
+        run: npx tsc --noEmit
+
+      - name: High-Severity Dependency Vulnerability Scan
+        run: npm audit --audit-level=high
+
+      - name: Run Database Migrations
+        run: npm run migrate
+
+      - name: Run Automated Test Suite (Zero Double-Booking & Idempotency)
+        run: npm test
+
+      - name: Validate Production Docker Container Build
+        run: docker build -t telemedicine-backend:latest .

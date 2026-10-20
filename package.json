@@ -9,8 +9,9 @@
     "start": "node dist/server.js",
     "migrate": "ts-node src/database/migrate.ts",
     "lint": "eslint src/**/*.ts",
-    "test": "echo \"Tests will be configured in Phase 8\" && exit 0"
+    "test": "ts-node tests/runTests.ts"
   },
+
   "keywords": [
     "telemedicine",
     "healthcare",

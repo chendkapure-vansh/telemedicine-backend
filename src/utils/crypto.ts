@@ -36,8 +36,7 @@ export function decryptPHI(ciphertext: string): string {
 
   const parts = ciphertext.split(':');
   if (parts.length !== 4) {
-    // If not in envelope format, return raw string
-    return ciphertext;
+    throw new Error('Invalid ciphertext envelope format: expected version:iv:tag:ciphertext');
   }
 
   const [version, ivHex, authTagHex, encryptedHex] = parts;
