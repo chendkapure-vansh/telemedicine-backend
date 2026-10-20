@@ -6,7 +6,13 @@ export async function runIdempotencyTests(): Promise<void> {
   console.log('  [TEST] Running Write Idempotency Integration tests...');
 
   const testKey = `test-idemp-${crypto.randomUUID()}`;
-  const userId = crypto.randomUUID();
+  const userRes = await query<{ id: string }>(
+    `INSERT INTO users (email, password_hash, role)
+     VALUES ($1, 'hash_placeholder', 'PATIENT')
+     RETURNING id;`,
+    [`idemp_${crypto.randomUUID().slice(0, 8)}@telemedicine.internal`]
+  );
+  const userId = userRes.rows[0].id;
   const requestHash = crypto.createHash('sha256').update('POST:/api/v1/test:payload').digest('hex');
   const sampleResponse = { status: 'success', reservation_id: crypto.randomUUID() };
 
@@ -42,8 +48,9 @@ export async function runIdempotencyTests(): Promise<void> {
   assert.strictEqual(replayRes.rows[0].status_code, 201, 'Cached status code must match 201');
   assert.deepStrictEqual(replayRes.rows[0].response_body, sampleResponse, 'Replay body must match cached response');
 
-  // 4. Clean up test key
+  // 4. Clean up test fixtures
   await query(`DELETE FROM idempotency_keys WHERE key = $1;`, [testKey]);
+  await query(`DELETE FROM users WHERE id = $1;`, [userId]);
 
   console.log('  [PASS] Write Idempotency tests passed (4/4 assertions)');
 }
