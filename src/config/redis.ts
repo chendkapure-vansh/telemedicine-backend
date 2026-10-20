@@ -9,6 +9,8 @@ export const redis = new Redis(env.REDIS_URL, {
     return delay;
   },
 });
+export const redisClient = redis;
+
 
 redis.on('connect', () => {
   logger.info('Connected to Redis');

@@ -206,7 +206,124 @@ export class UserRepository {
     ]);
     return res.rows[0];
   }
+
+
+  /**
+   * Retrieves doctor domain record by user UUID.
+
+   *
+   * @param userId - User UUID
+   * @returns Doctor record or null if not registered as doctor yet
+   */
+  async findDoctorByUserId(userId: string): Promise<Doctor | null> {
+    const sql = 'SELECT * FROM doctors WHERE user_id = $1;';
+    const res = await query<Doctor>(sql, [userId]);
+    return res.rows[0] || null;
+  }
+
+  /**
+   * Searches doctors with optional filters for specialization, language, and maximum fee.
+   * Joins with profiles table to return full names.
+   *
+   * @param filter - Search criteria and pagination parameters
+   * @returns List of doctor summaries and total matching count
+   */
+  async searchDoctors(
+    filter: DoctorSearchFilter
+  ): Promise<{ doctors: DoctorSummary[]; total: number }> {
+    const conditions: string[] = [];
+    const params: unknown[] = [];
+    let paramIndex = 1;
+
+    if (filter.specialization) {
+      conditions.push(`LOWER(d.specialization) = LOWER($${paramIndex++})`);
+      params.push(filter.specialization);
+    }
+
+    if (filter.language) {
+      conditions.push(`LOWER(d.language) = LOWER($${paramIndex++})`);
+      params.push(filter.language);
+    }
+
+    if (filter.max_fee !== undefined) {
+      conditions.push(`d.consultation_fee <= $${paramIndex++}`);
+      params.push(filter.max_fee);
+    }
+
+    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+    const page = Math.max(1, filter.page || 1);
+    const limit = Math.max(1, Math.min(100, filter.limit || 20));
+    const offset = (page - 1) * limit;
+
+    const countSql = `SELECT COUNT(*) AS total FROM doctors d ${whereClause};`;
+    const countRes = await query<{ total: string }>(countSql, params);
+    const total = parseInt(countRes.rows[0]?.total || '0', 10);
+
+    const dataSql = `
+      SELECT
+        d.id,
+        d.user_id,
+        p.full_name,
+        d.specialization,
+        d.language,
+        d.consultation_fee,
+        d.bio
+      FROM doctors d
+      LEFT JOIN profiles p ON d.user_id = p.user_id
+      ${whereClause}
+      ORDER BY d.created_at DESC
+      LIMIT $${paramIndex++} OFFSET $${paramIndex++};
+    `;
+
+    const dataParams = [...params, limit, offset];
+    const dataRes = await query<{
+      id: string;
+      user_id: string;
+      full_name: string | null;
+      specialization: string;
+      language: string;
+      consultation_fee: string | number;
+      bio: string | null;
+    }>(dataSql, dataParams);
+
+    const doctors: DoctorSummary[] = dataRes.rows.map((row) => ({
+      id: row.id,
+      user_id: row.user_id,
+      full_name: row.full_name || '',
+      specialization: row.specialization,
+      language: row.language,
+      consultation_fee: Number(row.consultation_fee),
+      bio: row.bio || null,
+    }));
+
+    return { doctors, total };
+  }
+}
+
+/**
+ * Summary view of a doctor for discovery listings and search results.
+ */
+export interface DoctorSummary {
+  id: string;
+  user_id: string;
+  full_name: string;
+  specialization: string;
+  language: string;
+  consultation_fee: number;
+  bio: string | null;
+}
+
+/**
+ * Filter parameters for doctor search query.
+ */
+export interface DoctorSearchFilter {
+  specialization?: string;
+  language?: string;
+  max_fee?: number;
+  page?: number;
+  limit?: number;
 }
 
 export const userRepository = new UserRepository();
+
 

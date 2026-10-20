@@ -7,6 +7,8 @@ import { pool } from './config/database';
 import { redis } from './config/redis';
 import { authRouter } from './routes/authRoutes';
 import { profileRouter } from './routes/profileRoutes';
+import { slotRouter } from './routes/slotRoutes';
+import { doctorRouter } from './routes/doctorRoutes';
 
 export function createApp(): Application {
   const app = express();
@@ -55,6 +57,9 @@ export function createApp(): Application {
   // 4. API Endpoints
   app.use('/api/v1/auth', authRouter);
   app.use('/api/v1', profileRouter);
+  app.use('/api/v1', slotRouter);
+  app.use('/api/v1', doctorRouter);
+
 
   // 5. 404 Handler for undefined routes
   app.use((req: Request, res: Response) => {
