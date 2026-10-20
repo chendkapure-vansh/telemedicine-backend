@@ -10,6 +10,8 @@ import { profileRouter } from './routes/profileRoutes';
 import { slotRouter } from './routes/slotRoutes';
 import { doctorRouter } from './routes/doctorRoutes';
 import { bookingRouter } from './routes/bookingRoutes';
+import { consultationRouter } from './routes/consultationRoutes';
+import { prescriptionRouter } from './routes/prescriptionRoutes';
 
 export function createApp(): Application {
   const app = express();
@@ -61,6 +63,9 @@ export function createApp(): Application {
   app.use('/api/v1', slotRouter);
   app.use('/api/v1', doctorRouter);
   app.use('/api/v1', bookingRouter);
+  app.use('/api/v1', consultationRouter);
+  app.use('/api/v1', prescriptionRouter);
+
 
 
 
