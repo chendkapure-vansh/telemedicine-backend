@@ -1,0 +1,769 @@
+openapi: 3.0.3
+info:
+  title: Telemedicine Backend System API
+  description: >-
+    Production-grade RESTful API for digital healthcare platform managing user
+    auth, doctor scheduling, high-concurrency appointment bookings, digital
+    prescriptions, and audit compliance.
+  version: 1.0.0
+servers:
+  - url: http://localhost:3000
+    description: Local Development Server
+
+paths:
+  # ============================================================================
+  # Health & Observability Endpoints
+  # ============================================================================
+  /health/live:
+    get:
+      summary: Liveness Probe
+      description: Returns 200 if the Node.js process is alive.
+      responses:
+        '200':
+          description: Service is alive
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+                  timestamp:
+                    type: string
+                    format: date-time
+
+  /health/ready:
+    get:
+      summary: Readiness Probe
+      description: Verifies active connections to PostgreSQL and Redis.
+      responses:
+        '200':
+          description: Service is healthy and ready to accept traffic
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ready
+                  database:
+                    type: string
+                    example: connected
+                  redis:
+                    type: string
+                    example: connected
+        '503':
+          description: One or more upstream dependencies are unavailable
+
+  /metrics:
+    get:
+      summary: Prometheus Metrics
+      description: Exposes Prometheus metrics (HTTP duration, request counts).
+      responses:
+        '200':
+          description: Prometheus metrics formatted payload
+          content:
+            text/plain:
+              schema:
+                type: string
+
+  # ============================================================================
+  # Authentication & MFA Endpoints
+  # ============================================================================
+  /api/v1/auth/register:
+    post:
+      summary: User Registration
+      description: Registers a new user with role PATIENT or DOCTOR.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - email
+                - password
+                - role
+              properties:
+                email:
+                  type: string
+                  format: email
+                  example: patient@example.com
+                password:
+                  type: string
+                  format: password
+                  minLength: 8
+                  example: P@ssw0rd123!
+                phone:
+                  type: string
+                  example: "+919876543210"
+                role:
+                  type: string
+                  enum: [PATIENT, DOCTOR]
+                  example: PATIENT
+      responses:
+        '201':
+          description: User registered successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          description: Email already registered
+
+  /api/v1/auth/login:
+    post:
+      summary: User Authentication
+      description: Authenticates credentials and returns JWT access and refresh tokens.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - email
+                - password
+              properties:
+                email:
+                  type: string
+                  format: email
+                  example: doctor@example.com
+                password:
+                  type: string
+                  format: password
+                  example: P@ssw0rd123!
+                mfa_code:
+                  type: string
+                  description: 6-digit TOTP code (required if MFA is enabled)
+                  example: "123456"
+      responses:
+        '200':
+          description: Authentication successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '401':
+          description: Invalid email, password, or MFA code
+
+  /api/v1/auth/refresh:
+    post:
+      summary: Refresh Access Token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refresh_token]
+              properties:
+                refresh_token:
+                  type: string
+      responses:
+        '200':
+          description: New access token issued
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '401':
+          description: Invalid or expired refresh token
+
+  /api/v1/auth/mfa/setup:
+    post:
+      summary: Setup TOTP MFA
+      description: Generates a new TOTP secret and QR code URI for authenticator app pairing.
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: MFA setup details
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  secret:
+                    type: string
+                    example: JBSWY3DPEHPK3PXP
+                  qr_code_uri:
+                    type: string
+                    example: otpauth://totp/Telemedicine:doctor@example.com?secret=JBSWY3DPEHPK3PXP&issuer=Telemedicine
+
+  /api/v1/auth/mfa/verify:
+    post:
+      summary: Verify & Enable TOTP MFA
+      description: Validates 6-digit code and activates MFA on the user account.
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - code
+              properties:
+                code:
+                  type: string
+                  minLength: 6
+                  maxLength: 6
+                  example: "482910"
+      responses:
+        '200':
+          description: MFA successfully enabled on account
+        '400':
+          description: Invalid or expired code
+
+  # ============================================================================
+  # Profiles & Doctor Discovery
+  # ============================================================================
+  /api/v1/users/profile:
+    get:
+      summary: Get User Profile
+      description: Retrieves profile for authenticated user; decrypts medical history.
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Profile returned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserProfile'
+    put:
+      summary: Update User Profile
+      description: Updates demographic data and encrypts sensitive medical history.
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                full_name:
+                  type: string
+                  example: Rahul Sharma
+                dob:
+                  type: string
+                  format: date
+                  example: "1990-05-15"
+                gender:
+                  type: string
+                  enum: [MALE, FEMALE, OTHER]
+                  example: MALE
+                medical_history:
+                  type: string
+                  example: "Hypertension diagnosed in 2021, on medication."
+      responses:
+        '200':
+          description: Profile updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserProfile'
+
+  /api/v1/doctors/profile:
+    put:
+      summary: Update Doctor Details
+      description: Sets specialization, consultation fee, license, and language.
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - specialization
+                - consultation_fee
+                - license_number
+                - language
+              properties:
+                specialization:
+                  type: string
+                  example: Cardiology
+                experience_years:
+                  type: integer
+                  example: 12
+                consultation_fee:
+                  type: number
+                  example: 600.00
+                license_number:
+                  type: string
+                  example: "MED-IN-88912"
+                language:
+                  type: string
+                  example: English
+                bio:
+                  type: string
+                  example: "Cardiologist with 12+ years of clinical experience."
+      responses:
+        '200':
+          description: Doctor profile updated successfully
+
+  /api/v1/doctors/search:
+    get:
+      summary: Search Doctors (sub-200ms)
+      description: Search doctors by specialization, language, and maximum fee with Redis caching.
+      parameters:
+        - name: specialization
+          in: query
+          schema:
+            type: string
+          example: Cardiology
+        - name: language
+          in: query
+          schema:
+            type: string
+          example: English
+        - name: max_fee
+          in: query
+          schema:
+            type: number
+          example: 1000
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        '200':
+          description: Paginated doctor search results
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  doctors:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/DoctorSummary'
+                  total:
+                    type: integer
+                  page:
+                    type: integer
+
+  # ============================================================================
+  # Doctor Availability Slots
+  # ============================================================================
+  /api/v1/slots:
+    post:
+      summary: Create Availability Slot
+      description: Doctor schedules a single consultation slot.
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - start_time
+                - end_time
+              properties:
+                start_time:
+                  type: string
+                  format: date-time
+                  example: "2026-10-25T10:00:00Z"
+                end_time:
+                  type: string
+                  format: date-time
+                  example: "2026-10-25T10:30:00Z"
+      responses:
+        '201':
+          description: Slot created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Slot'
+    get:
+      summary: Get Doctor Available Slots
+      description: Lists active AVAILABLE slots for a given doctor.
+      parameters:
+        - name: doctor_id
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: List of available slots
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Slot'
+
+  # ============================================================================
+  # High-Concurrency Booking & Idempotent Payment Flow
+  # ============================================================================
+  /api/v1/bookings/reserve:
+    post:
+      summary: Reserve Slot (Locking)
+      description: Atomically locks a slot for 10 minutes to prevent double booking.
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - slot_id
+              properties:
+                slot_id:
+                  type: string
+                  format: uuid
+      responses:
+        '201':
+          description: Slot reserved; checkout lease active for 10 minutes
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  reservation_id:
+                    type: string
+                    format: uuid
+                  slot_id:
+                    type: string
+                    format: uuid
+                  locked_until:
+                    type: string
+                    format: date-time
+                  amount:
+                    type: number
+                    example: 600.00
+                  currency:
+                    type: string
+                    example: INR
+        '409':
+          description: Slot already booked or currently reserved by another patient
+
+  /api/v1/bookings/confirm:
+    post:
+      summary: Confirm Booking & Process Payment
+      description: Executes charge via Mocked Gateway and confirms consultation.
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - reservation_id
+                - payment_method
+              properties:
+                reservation_id:
+                  type: string
+                  format: uuid
+                payment_method:
+                  type: string
+                  example: MOCK_CARD
+                card_token:
+                  type: string
+                  example: tok_visa_test
+      responses:
+        '200':
+          description: Booking confirmed and consultation created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Consultation'
+        '400':
+          description: Payment declined or slot lock expired
+
+  # ============================================================================
+  # Consultation Lifecycle & Prescriptions
+  # ============================================================================
+  /api/v1/consultations/{id}:
+    get:
+      summary: Get Consultation Details
+      description: Retrieves consultation details. Restricted to patient, treating doctor, or admin.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Consultation details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Consultation'
+
+  /api/v1/consultations/{id}/status:
+    patch:
+      summary: Update Consultation State
+      description: Moves consultation state through SCHEDULED -> IN_PROGRESS -> COMPLETED or CANCELLED.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - status
+              properties:
+                status:
+                  type: string
+                  enum: [IN_PROGRESS, COMPLETED, CANCELLED]
+                  example: IN_PROGRESS
+                notes:
+                  type: string
+                  example: "Patient consultation commenced on video call."
+      responses:
+        '200':
+          description: Updated consultation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Consultation'
+
+  /api/v1/prescriptions:
+    post:
+      summary: Create Digital Prescription
+      description: Doctor issues prescription; diagnosis and advice are field-level encrypted.
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - consultation_id
+                - diagnosis
+                - medicines
+                - advice
+              properties:
+                consultation_id:
+                  type: string
+                  format: uuid
+                diagnosis:
+                  type: string
+                  example: "Acute Bronchitis"
+                medicines:
+                  type: array
+                  items:
+                    type: object
+                    required: [name, dosage, frequency, duration_days]
+                    properties:
+                      name: {type: string, example: "Amoxicillin"}
+                      dosage: {type: string, example: "500mg"}
+                      frequency: {type: string, example: "Twice daily after food"}
+                      duration_days: {type: integer, example: 5}
+                advice:
+                  type: string
+                  example: "Steam inhalation twice daily; follow up if fever persists."
+      responses:
+        '201':
+          description: Prescription issued successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Prescription'
+
+  /api/v1/prescriptions/{id}:
+    get:
+      summary: Retrieve Prescription
+      description: Retrieves prescription with decrypted diagnosis and advice.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Prescription details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Prescription'
+
+  # ============================================================================
+  # Admin Analytics
+  # ============================================================================
+  /api/v1/admin/analytics/overview:
+    get:
+      summary: Admin Analytics Overview
+      description: Platform metrics (total consultations, volume, gross doctor earnings).
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Analytics summary
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  total_consultations:
+                    type: integer
+                    example: 10420
+                  completed_consultations:
+                    type: integer
+                    example: 9812
+                  total_active_doctors:
+                    type: integer
+                    example: 350
+                  gross_revenue_inr:
+                    type: number
+                    example: 6245000.00
+
+# ============================================================================
+# Reusable Components
+# ============================================================================
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      schema:
+        type: string
+      description: Unique client-generated key preventing duplicate write operations
+
+  responses:
+    BadRequest:
+      description: Validation or parameter error
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: string
+                example: "Validation failed"
+              details:
+                type: array
+                items:
+                  type: string
+
+  schemas:
+    AuthResponse:
+      type: object
+      properties:
+        access_token:
+          type: string
+          example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+        refresh_token:
+          type: string
+          example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+        user:
+          type: object
+          properties:
+            id: {type: string, format: uuid}
+            email: {type: string}
+            role: {type: string, enum: [PATIENT, DOCTOR, ADMIN]}
+            mfa_enabled: {type: boolean}
+
+    UserProfile:
+      type: object
+      properties:
+        id: {type: string, format: uuid}
+        full_name: {type: string}
+        dob: {type: string, format: date}
+        gender: {type: string}
+        medical_history: {type: string}
+
+    DoctorSummary:
+      type: object
+      properties:
+        id: {type: string, format: uuid}
+        user_id: {type: string, format: uuid}
+        full_name: {type: string}
+        specialization: {type: string}
+        language: {type: string}
+        consultation_fee: {type: number}
+        bio: {type: string}
+
+    Slot:
+      type: object
+      properties:
+        id: {type: string, format: uuid}
+        doctor_id: {type: string, format: uuid}
+        start_time: {type: string, format: date-time}
+        end_time: {type: string, format: date-time}
+        status: {type: string, enum: [AVAILABLE, LOCKED, BOOKED]}
+        locked_until: {type: string, format: date-time, nullable: true}
+
+    Consultation:
+      type: object
+      properties:
+        id: {type: string, format: uuid}
+        patient_id: {type: string, format: uuid}
+        doctor_id: {type: string, format: uuid}
+        slot_id: {type: string, format: uuid}
+        status: {type: string, enum: [SCHEDULED, IN_PROGRESS, COMPLETED, CANCELLED]}
+        notes: {type: string, nullable: true}
+        created_at: {type: string, format: date-time}
+
+    Prescription:
+      type: object
+      properties:
+        id: {type: string, format: uuid}
+        consultation_id: {type: string, format: uuid}
+        doctor_id: {type: string, format: uuid}
+        patient_id: {type: string, format: uuid}
+        diagnosis: {type: string}
+        medicines:
+          type: array
+          items:
+            type: object
+        advice: {type: string}
+        created_at: {type: string, format: date-time}
