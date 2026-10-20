@@ -9,6 +9,7 @@ import { authRouter } from './routes/authRoutes';
 import { profileRouter } from './routes/profileRoutes';
 import { slotRouter } from './routes/slotRoutes';
 import { doctorRouter } from './routes/doctorRoutes';
+import { bookingRouter } from './routes/bookingRoutes';
 
 export function createApp(): Application {
   const app = express();
@@ -59,6 +60,8 @@ export function createApp(): Application {
   app.use('/api/v1', profileRouter);
   app.use('/api/v1', slotRouter);
   app.use('/api/v1', doctorRouter);
+  app.use('/api/v1', bookingRouter);
+
 
 
   // 5. 404 Handler for undefined routes
