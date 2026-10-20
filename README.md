@@ -156,65 +156,14 @@ Complete OpenAPI 3.0 specification available in [docs/openapi.yaml](docs/openapi
 
 ---
 
-## 6. Five-Minute Demo Video Walkthrough Script
+## 6. Project Documentation & Deliverables
 
-Use this exact script and sequence of terminal commands when recording the 5-minute project demonstration:
+All technical deliverables specified in the system design requirements are documented in the `docs/` directory:
 
-```markdown
-### 0:00 - 0:45 | Introduction & Architecture Overview
-"Hello! Today I am presenting the Telemedicine Backend System built with TypeScript, Node.js,
-PostgreSQL 16, and Redis 7. The platform is architected to handle 100,000 daily consultations
-with zero double-booking, sub-200ms search latency, write idempotency, and field-level AES-256-GCM
-encryption for patient health data.
-
-Let's look at the project structure: We have a clean layered architecture with dependency
-injection across controllers, services, repositories, and asynchronous background workers."
-
-### 0:45 - 1:45 | Database Schema & Immutability Trigger
-[Command: npm run migrate]
-"Our database schema features 8 core domain tables plus an idempotency store.
-Notice our audit_logs table: It is partitioned by monthly range on created_at for fast date-based
-partition pruning. We also enforce regulatory immutability via a PostgreSQL trigger that blocks
-any update or delete operations on audit records."
-
-### 1:45 - 2:45 | The Zero Double-Booking Concurrency Proof
-[Command: npm test]
-"Now let's demonstrate the high-concurrency race condition test.
-In this test, we spawn 50 concurrent client requests hitting our booking reservation endpoint
-at the exact same millisecond, competing for the exact same consultation slot.
-
-Notice the output: Exactly 1 reservation succeeded with HTTP 201 Created, and all other 49
-requests received an immediate HTTP 409 Conflict. This is powered by PostgreSQL row-level
-pessimistic locking using SELECT FOR UPDATE NOWAIT, preventing split-brain or double-bookings."
-
-### 2:45 - 3:45 | Saga Compensation, Idempotency & PHI Encryption
-"In our booking flow, payment processing runs outside the database transaction to prevent connection
-pool starvation. If a payment fails or times out, our Saga compensation logic automatically releases
-the locked slot back to AVAILABLE.
-
-Furthermore, write requests enforce an Idempotency-Key header. If a mobile patient retries due to a
-network drop, our idempotency engine detects the SHA-256 fingerprint and replays the cached response
-with an X-Cache-Lookup: HIT header without duplicate charges.
-
-All patient medical histories, clinical notes, and digital prescriptions are encrypted with
-AES-256-GCM using authenticated key envelopes (v1:iv:tag:ciphertext)."
-
-### 3:45 - 4:30 | Observability, Metrics & Admin Analytics
-[Command: curl http://localhost:3000/health/ready]
-[Command: curl http://localhost:3000/metrics]
-"For production observability, we provide liveness and readiness health probes that test database
-and Redis latency.
-Our /metrics endpoint exports Prometheus metrics, including http_request_duration_seconds
-histograms tracking our p95 SLA targets and request counts.
-All logs emitted by Pino include correlated W3C trace IDs."
-
-### 4:30 - 5:00 | Docker & GitHub Actions CI Conclusion
-"The entire system is containerized with a production multi-stage Dockerfile and docker-compose.yml.
-Our GitHub Actions CI pipeline runs linting, typechecking, high-severity npm audit vulnerability
-scans, database migrations, and the automated race condition test suite on every commit.
-
-Thank you for watching!"
-```
+* **[Architecture Document (docs/architecture.md)](docs/architecture.md):** High-level data flow, booking sequence diagram, ER diagram, database partitioning, Saga transaction management, and Backup/DR strategy.
+* **[Security Checklist & Threat Model (docs/security_threat_model.md)](docs/security_threat_model.md):** STRIDE threat modeling, OWASP Top 10 mitigations, data classification, AES-256-GCM key rotation policy, and audit trail compliance.
+* **[OpenAPI 3.0 Specification (docs/openapi.yaml)](docs/openapi.yaml):** Complete REST API contract with request/response schemas, security definitions, and status codes.
+* **[Continuous Integration (CI) Workflow (.github/workflows/ci.yml)](.github/workflows/ci.yml):** Automated pipeline enforcing linting, strict typing, high-severity dependency audits, migrations, and test execution.
 
 ---
 
