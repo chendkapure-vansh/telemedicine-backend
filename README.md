@@ -160,8 +160,8 @@ Complete OpenAPI 3.0 specification available in [docs/openapi.yaml](docs/openapi
 
 All technical deliverables specified in the system design requirements are documented in the `docs/` directory:
 
-* **[Architecture Document (docs/architecture.md)](docs/architecture.md):** High-level data flow, booking sequence diagram, ER diagram, database partitioning, Saga transaction management, and Backup/DR strategy.
-* **[Security Checklist & Threat Model (docs/security_threat_model.md)](docs/security_threat_model.md):** STRIDE threat modeling, OWASP Top 10 mitigations, data classification, AES-256-GCM key rotation policy, and audit trail compliance.
+* **[Architecture Document (docs/ARCHITECTURE.md)](docs/ARCHITECTURE.md):** High-level data flow, booking sequence diagram, ER diagram, database partitioning, Saga transaction management, and Backup/DR strategy.
+* **[Security Checklist & Threat Model (docs/SECURITY.md)](docs/SECURITY.md):** STRIDE threat modeling, OWASP Top 10 mitigations, data classification, AES-256-GCM key rotation policy, and audit trail compliance.
 * **[OpenAPI 3.0 Specification (docs/openapi.yaml)](docs/openapi.yaml):** Complete REST API contract with request/response schemas, security definitions, and status codes.
 * **[Continuous Integration (CI) Workflow (.github/workflows/ci.yml)](.github/workflows/ci.yml):** Automated pipeline enforcing linting, strict typing, high-severity dependency audits, migrations, and test execution.
 
